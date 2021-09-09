@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>SignalR Client</title>
+    </head>
+    <body>
+        <h1> SignalR Client </h1>
+        <p id="stateLabel"> Ready to connect </p>
+        <p id="connIDLabel"> ConnID: N/A </p>
+        <div>
+            <label for="connectionUrl"> SignalR Server Url: </label>
+            <input id="connectionUrl"/>
+            <button id="connectButton" type="submit"> Connect </button>
+            <button id="closeButton" type="submit"> Close Connection</button>
+        </div>
+        <br>
+        <div>
+            <label for="sendMessage"> Message: </label>
+            <input id="sendMessage" disabled />
+            <button id="sendButton" type="submit" disabled> Send Message</button>
+        </div>
+        <br>
+        <div>
+            <label for="recipients"> Recipient ID: </label>
+            <input id="recipients" disabled>
+        </div>
+        <br>
+        <h2>Communication Log</h2>
+        <table style="width: 800px">
+            <thead>
+                <tr>
+                    <td style="width: 100px"> From</td>
+                    <td style="width: 100px"> To</td>
+                </tr>
+            </thead>
+            <tbody id="commsLog">   
+            </tbody>
+        </table>
+        <p></p>
+    </body>
+    <script src="lib/signalr/dist/browser/signalr.js"></script>
+    <script>
+        let connectionUrl = document.getElementById("connectionUrl");
+        let connectButton = document.getElementById("connectButton");
+        let stateLabel = document.getElementById("stateLabel");
+        let sendMessage = document.getElementById("sendMessage");
+        let sendButton = document.getElementById("sendButton");
+        let commsLog = document.getElementById("commsLog");
+        let closeButton = document.getElementById("closeButton");
+        let recipients = document.getElementById("recipients");
+        let connID = document.getElementById("connIDLabel");
+
+        connectionUrl.value = "http://localhost:5000/chatHub";
+        
+        var hubConnection = new signalR.HubConnectionBuilder().withUrl(connectionUrl.value).build();
+
+
+
+        connectButton.onclick = function () {
+            stateLabel.innerHTML = "Attempting to connect...";
+
+            hubConnection.start().then(() => {
+                updateState();
+                commsLog.innerHTML += '<tr>' +
+                    '<td colspan="3" class="commslog-data">Connection opened</td>' +
+                    '</tr>';
+            });
+        };
+
+        closeButton.onclick = function(){
+            if(!hubConnection || hubConnection.state !== "Connected") alert('Hub not connected!');
+            hubConnection.stop().then(() =>{
+                console.debug("Requested stop on hub");
+            });
+        };
+
+        hubConnection.onclose((event) =>{
+            updateState();
+            commsLog.innerHTML += '<tr>' +
+                '<td colspan="3" class="commslog-data"> Connection Stopped </td>' +
+                '</tr>';
+        });
+
+        sendButton.onclick = function() {
+            var message = constructJSON();
+            hubConnection.invoke("SendMessageAsync", message);
+            commsLog.innerHTML += '<tr>' +
+                '<td class="commslog-client">Client</td>' +
+                '<td class="commslog-server">Server</td>' +
+                '<td class="commslog-data"> ' + htmlEscape(message) + ' </td></tr>';
+        };
+
+        hubConnection.on('ReceiveConnID', (connid) =>{
+            connID.innerHTML = "ConnID " + connid;
+            commsLog.innerHTML += '<tr>' +
+                '<td colspan="3" class="commslog-data">Connection ID received from Hub</td>' +
+                '</tr>';
+        })
+
+        hubConnection.on('ReceiveMessage', (message) =>{
+            commsLog.innerHTML += '<tr>' +
+                '<td class="commslog-client">Server</td>' +
+                '<td class="commslog-server">Client</td>' +
+                '<td class="commslog-data"> ' + htmlEscape(message) + ' </td></tr>';
+        })    
+
+        function htmlEscape(str) {
+            return str.toString()
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function constructJSON()
+        {
+            return JSON.stringify({
+                "From" : connID.innerHTML.substring(8, connID.innerHTML.length),
+                "To" : recipients.value.trim(),
+                "Message": sendMessage.value
+            })
+        }
+
+        function updateState() {
+            function disable() {
+                sendMessage.disabled = true;
+                sendButton.disabled = true;
+                closeButton.disabled = true;
+                recipients.disabled = true;
+            }
+
+            function enable() {
+                sendMessage.disabled = false;
+                sendButton.disabled = false;
+                closeButton.disabled = false;
+                recipients.disabled = false;
+    
+            }
+
+            connectionUrl.disabled = true;
+            connectButton.disabled = true;
+            if (!hubConnection) {
+                disable();
+            } else {
+                switch (hubConnection.state) {
+                    case "Disconnected":
+                        stateLabel.innerHTML = "Closed";
+                        connID.innerHTML = "ConnID: N/A"
+                        disable();
+                        connectionUrl.disabled = false;
+                        connectButton.disabled = false;
+                        break;
+                    case "Connecting":
+                        stateLabel.innerHTML = "Connecting...";
+                        disable();
+                        break;
+                    case "Connected":
+                        stateLabel.innerHTML = "Connected";
+                        enable();
+                        break;
+                    default:
+                        stateLabel.innerHTML = "Unknown Hub State - unknown ";
+                        disable();
+                        break;
+                }
+            }
+        }
+    </script>
+</html>
